@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Khảo sát sự hài lòng khách hàng</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333333;
+        }
+
+        p {
+            font-size: 18px;
+            color: #555;
+        }
+
+        #startSurveyBtn {
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #startSurveyBtn:hover {
+            background-color: #45a049;
+        }
+
+        #thankYouMessage {
+            display: none;
+            font-size: 18px;
+            color: #555;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Cảm ơn bạn đã dành thời gian!</h1>
+        <p id="startMessage">Vui lòng bấm nút dưới đây để bắt đầu khảo sát.</p>
+        <button id="startSurveyBtn">Bắt đầu khảo sát</button>
+        <p id="thankYouMessage">Bạn đã tham gia khảo sát rồi. Cảm ơn bạn!</p>
+    </div>
+
+    <script>
+        // Initialize Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCxbaj20IM45Byb_2MOlVfgmmp7Drab7Z0",
+            authDomain: "datafinalpetrolimex.firebaseapp.com",
+            projectId: "datafinalpetrolimex",
+            storageBucket: "datafinalpetrolimex.appspot.com",
+            messagingSenderId: "75448849141",
+            appId: "1:75448849141:web:43062ab87a826f54cd2bbc",
+            measurementId: "G-4E11GF9CTV"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Function to get a cookie by name
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        // Function to set a cookie
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
+        }
+
+        // Function to generate a unique survey code
+        function generateSurveyCode() {
+            const randomPart = Math.floor(10000 + Math.random() * 90000); // Mã ngẫu nhiên 5 chữ số
+            const now = new Date();
+            const datePart = now.getDate().toString().padStart(2, '0') + "/" + (now.getMonth() + 1).toString().padStart(2, '0'); // Ngày/Tháng
+            const timePart = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0') + ":" + now.getSeconds().toString().padStart(2, '0');
+            return randomPart + "_" + datePart + "_" + timePart;
+        }
+
+        // Function to check if the current device has rated a specific employee
+        function hasRatedEmployee(employeeCode) {
+            const ratings = JSON.parse(localStorage.getItem('employeeRatings')) || {};
+            return !!ratings[employeeCode];  // Trả về true nếu đã đánh giá cho mã nhân viên này
+        }
+
+        // Function to mark an employee as rated
+        function markEmployeeAsRated(employeeCode) {
+            const ratings = JSON.parse(localStorage.getItem('employeeRatings')) || {};
+            ratings[employeeCode] = true;  // Đánh dấu đã đánh giá cho mã nhân viên này
+            localStorage.setItem('employeeRatings', JSON.stringify(ratings));
+        }
+
+        // When the user clicks the "Start Survey" button
+        document.getElementById('startSurveyBtn').addEventListener('click', async function () {
+            // Load the fingerprint and create the user ID
+            const fp = await FingerprintJS.load();
+            const result = await fp.get();
+
+            const canvasFingerprint = result.components.canvas.value;
+            const userAgent = navigator.userAgent;
+            const screenResolution = screen.width + 'x' + screen.height;
+            const platform = navigator.platform;
+
+            const userId = canvasFingerprint + userAgent + screenResolution + platform;
+
+            // Store the user ID in local storage and cookie
+            if (!localStorage.getItem('userId')) {
+                localStorage.setItem('userId', userId);
+            }
+            if (!getCookie('userId')) {
+                setCookie('userId', userId, 365);
+            }
+
+            // Get the employee code from URL
+            const employeeCode = new URLSearchParams(window.location.search).get('employeeCode') || "N/A";
+
+            // Check if the employee has already been rated
+            if (hasRatedEmployee(employeeCode)) {
+                document.getElementById('startMessage').style.display = 'none';
+                document.getElementById('startSurveyBtn').style.display = 'none';
+                document.getElementById('thankYouMessage').style.display = 'block';
+            } else {
+                // Generate the survey code
+                const surveyCode = generateSurveyCode();
+
+                // Save data to Firebase
+                db.collection("surveyResponses").add({
+                    employeeCode: employeeCode,
+                    surveyCode: surveyCode,
+                    timestamp: new Date()
+                })
+                .then(() => {
+                    console.log("Data successfully written to Firebase!");
+                })
+                .catch((error) => {
+                    console.error("Error writing document: ", error);
+                });
+
+                // Mark this employee as rated
+                markEmployeeAsRated(employeeCode);
+
+                // Redirect to the Google Form with the survey code and employee code
+                const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSdumA462s_nEks4Dv37qzh7mrxmz43OI2RQNWfTrbUAOZb-dg/viewform?usp=pp_url&entry.814212883=" + employeeCode + "&entry.1327565160=" + surveyCode;
+                window.location.href = formUrl;
+            }
+        });
+
+        // Initial check on page load
+        const employeeCode = new URLSearchParams(window.location.search).get('employeeCode') || "N/A";
+        if (hasRatedEmployee(employeeCode)) {
+            document.getElementById('startMessage').style.display = 'none';
+            document.getElementById('startSurveyBtn').style.display = 'none';
+            document.getElementById('thankYouMessage').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
